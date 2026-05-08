@@ -12,12 +12,15 @@ object Typer:
   object Context:
 
     /** A typing context containing the symbols of the standard library. */
-    def builtin: Context = Map[String, Type](
-      "+" -> Type.Arrow.binary(Type.Ground.Int, Type.Ground.Int, Type.Ground.Int),
-      "-" -> Type.Arrow.binary(Type.Ground.Int, Type.Ground.Int, Type.Ground.Int),
-      "*" -> Type.Arrow.binary(Type.Ground.Int, Type.Ground.Int, Type.Ground.Int),
-      "/" -> Type.Arrow.binary(Type.Ground.Int, Type.Ground.Int, Type.Ground.Int),
-    )
+    def builtin: Context = {
+      val bindings = Map[String, Type](
+        "infix+" -> Type.Arrow.binary(Type.Ground.Int, Type.Ground.Int, Type.Ground.Int),
+        "infix-" -> Type.Arrow.binary(Type.Ground.Int, Type.Ground.Int, Type.Ground.Int),
+        "infix*" -> Type.Arrow.binary(Type.Ground.Int, Type.Ground.Int, Type.Ground.Int),
+        "infix/" -> Type.Arrow.binary(Type.Ground.Int, Type.Ground.Int, Type.Ground.Int),
+      )
+      Context(bindings, Map())
+    }
 
   end Context
 

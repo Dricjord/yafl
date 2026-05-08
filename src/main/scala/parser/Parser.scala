@@ -48,7 +48,7 @@ object Parser:
     // the result of applying an infix operator with a stronger precedence than that of `f`.
     def loop(lhs: Syntax[TermTree])(using Context): Result[Syntax[TermTree]] = peek match
       case Some(t) if (precedence <= t.precedence) =>
-        operator
+        infixOperator
           .and { (f) =>
             infixTerm(t.precedence + 1).map { (rhs) =>
               val s = lhs.span.extendedToCover(f.span)
@@ -71,11 +71,6 @@ object Parser:
       case Some(Token.leftParenthesis) => lambdaOrParenthesized
       case _ => throw expected("term")
 
-  /** Parses an operator. */
-  private def operator(using Context): Result[Syntax[TermTree.Variable]] =
-    take(Token.operator, "operator")
-      .map((n) => Syntax(TermTree.Variable(n.text.toString), n.span))
-
   /** Parses a Boolean literal. */
   private def booleanLiteral(using Context): Result[Syntax[TermTree.BooleanLiteral]] =
     take(Token.boolean, "Boolean literal")
@@ -90,6 +85,11 @@ object Parser:
   private def termIdentifier(using Context): Result[Syntax[TermTree.Variable]] =
     take(Token.identifier, "identifier")
       .map((n) => Syntax(TermTree.Variable(n.text.toString), n.span))
+
+  /** Parses an infix operator. */
+  private def infixOperator(using Context): Result[Syntax[TermTree.Variable]] =
+    take(Token.operator, "operator")
+      .map((n) => Syntax(TermTree.Variable(s"infix${n.text.toString}"), n.span))
 
   /** Parses a lambda or a parenthesized term. */
   private def lambdaOrParenthesized(using Context): Result[Syntax[TermTree]] =
