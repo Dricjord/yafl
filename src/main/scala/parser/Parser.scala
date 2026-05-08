@@ -5,7 +5,7 @@ import yafl.syntax.{Syntax, TermTree, TypeTree}
 
 object Parser:
 
-  /** The context in which a parsing method is being applied.
+  /** The context in which parsing is taking place.
     *
     * @param source The source file being parsed.
     * @param position The position of the parser in the source file.
