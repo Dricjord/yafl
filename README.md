@@ -21,15 +21,44 @@ The following is assumed:
 
 ```
 term ::=
+  | term type-application
+  | mul-term
+
+mul-term ::=
+  | mul-term ['*' | '/'] add-term
+  | add-term
+
+add-term ::=
+  | add-term ['+' | '-'] comparison-term
+  | comparison-term
+
+comparison-term ::=
+  | comparison-term ['==' | '!=' | '<' | '<=' | '>=' | '>']  and-term
+  | and-term
+
+and-term ::=
+  | and-term '&&' or-term
+  | or-term
+
+or-term ::=
+  | or-term '&&' prefix-term
+  | prefix-term
+
+prefix-term ::=
+  | ['!' | '-'] prefix-term
+  | type-application
+
+type-application ::=
+  | type-application '[' type (',' type)* ']'
+  | simple-term
+
+simple-term ::=
   | unit-literal
   | boolean-literal
   | integer-literal
   | identifier
   | term-abstraction
-  | term-application
   | type-abstraction
-  | type-application
-  | infix-application
   | conditional
   | '(' term ')'
 
@@ -44,30 +73,14 @@ term-abstraction ::=
   | '(' identifier ':' type (',' identifier ':' type)* ')' '=>' term
   | 'fix' identifier ':' type '=' term
 
-term-application ::=
-  | term term
-
 type-abstraction ::=
   | '[' identifier (',' identifier)* ']' '=>' term
-
-type-application ::=
-  | term '[' type (',' type)* ']'
-
-infix-application ::=
-  | term operator term
 
 conditional ::=
   | 'if' term 'then' term 'else' term
 
 type ::=
   | identifier
-  | arrow
-  | forall
-  | '_'
-
-type arrow ::=
   | type -> type
-
-type forall ::=
   | '[' identifier (',' identifier)* ']' => type
 ```
