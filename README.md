@@ -9,11 +9,22 @@ Identifers are strings of alphanumeric characters and the underscore, starting w
 
 ```
 term ::=
+  | unit-literal
+  | boolean-literal
+  | integer-literal
   | identifier
+  | infix-application
   | term-abstraction
   | term-application
   | type-abstraction
   | type-application
+  | '(' term ')'
+
+unit-literal ::=
+  | '(' ')'
+
+infix-application ::=
+  | term operator term
 
 term-abstraction ::=
   | '(' identifier ':' type (',' identifier ':' type)* ')' '=>' term
