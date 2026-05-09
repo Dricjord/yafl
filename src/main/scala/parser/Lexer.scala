@@ -17,7 +17,7 @@ object Lexer:
 
   /** Returns `true` iff `c` may be part of an operator. */
   def isOperator(c: Char): Boolean =
-    "|&<>=+-*/".contains(c)
+    "!|&<>=+-*/".contains(c)
 
 end Lexer
 

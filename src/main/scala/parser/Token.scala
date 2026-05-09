@@ -15,6 +15,10 @@ case class Token(tag: Token.Tag, span: yafl.SourceSpan):
   def isAnyOf(ks: Token.Tag*): Boolean =
     ks.contains(tag)
 
+  /** Returns `true` iff `this` delimits the end of a term. */
+  def isDelimiter: Boolean =
+    isAnyOf(Token.rightParenthesis, Token.colon, Token.semicolon, Token.`then`, Token.`else`)
+
   /** If `this` is an operator, returns its precedence; otherwise, returns -1. */
   def precedence: Int =
     if tag == Token.operator then text match

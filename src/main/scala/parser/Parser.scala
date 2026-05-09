@@ -35,31 +35,58 @@ object Parser:
 
   /** Parses a term. */
   private def term(using Context): Result[Syntax[TermTree]] =
-    infixTerm(0)
+    termApplication(0)
 
-  /** Parses a simple term or the application of an infix operator.`lhs`
+  /** Parses a simple term or an application.
     *
     * @param precedence The minimum precedence level of the operators way may considerate.
     */
-  private def infixTerm(precedence: Int)(using Context): Result[Syntax[TermTree]] = {
+  private def termApplication(precedence: Int)(using Context): Result[Syntax[TermTree]] = {
     // The following loop implements precedence climbing. At each iteration, we look for an infix
     // operator `f` after `lhs` whose precedence is not stronger than the current precedence level.
     // If there's one, we parse it followed by a right hand side, which is either a simple term or
-    // the result of applying an infix operator with a stronger precedence than that of `f`.
+    // the result of applying an infix operator with a stronger precedence. If there isn't one but
+    // there are still tokens to parse, we parse a term application. Otherwise we return the term
+    // we have computed so far.
     def loop(lhs: Syntax[TermTree])(using Context): Result[Syntax[TermTree]] = peek match
-      case Some(t) if (precedence <= t.precedence) =>
-        infixOperator
-          .and { (f) =>
-            infixTerm(t.precedence + 1).map { (rhs) =>
-              val s = lhs.span.extendedToCover(f.span)
-              val a = Syntax(TermTree.TermApplication(f, lhs), s)
-              Syntax(TermTree.TermApplication(a, rhs), s.extendedToCover(rhs.span))
+      case Some(t) if (t.tag == Token.operator) =>
+        if (precedence <= t.precedence) then
+          // We found an operator with enough precedence. We'll take it along with a right operand
+          // and keep parsing for the rest of the expression.
+          infixOperator
+            .and { (f) =>
+              termApplication(t.precedence + 1).map { (rhs) =>
+                val s = lhs.span.extendedToCover(f.span)
+                val a = Syntax(TermTree.TermApplication(f, lhs), s)
+                Syntax(TermTree.TermApplication(a, rhs), s.extendedToCover(rhs.span))
+              }
             }
-          }
-          .and(loop)
-      case _ => result(lhs)
-    simpleTerm.and(loop)
+            .and(loop)
+        else
+          // We found an operator but it doesn't have enough precedence. We're done.
+          result(lhs)
+
+      case Some(t) if !t.isDelimiter =>
+        // The next token isn't an operator so we'll treat it as the start of a term occurring as
+        // the argument of some application.
+        typeApplication.map { (rhs) =>
+          Syntax(TermTree.TermApplication(lhs, rhs), lhs.span.extendedToCover(rhs.span))
+        }
+
+      case _ =>
+        // We reached a delimiter or the end of the steam. We're done.
+        result(lhs)
+
+    prefixTerm.and(loop)
   }
+
+  /** Parses a simple term of the application of a prefix operator. */
+  private def prefixTerm(using Context): Result[Syntax[TermTree]] =
+    typeApplication
+
+  /** Parses a simple term or a type application. */
+  private def typeApplication(using Context): Result[Syntax[TermTree]] =
+    simpleTerm
 
   /** Parses a simple term. */
   private def simpleTerm(using Context): Result[Syntax[TermTree]] =
@@ -67,7 +94,6 @@ object Parser:
       case Some(Token.boolean) => booleanLiteral
       case Some(Token.integer) => integerLiteral
       case Some(Token.identifier) => termIdentifier
-      case Some(Token.`if`) => conditional
       case Some(Token.leftParenthesis) => lambdaOrParenthesized
       case _ => throw expected("term")
 
@@ -89,18 +115,19 @@ object Parser:
   /** Parses an infix operator. */
   private def infixOperator(using Context): Result[Syntax[TermTree.Variable]] =
     take(Token.operator, "operator")
-      .map((n) => Syntax(TermTree.Variable(s"infix${n.text.toString}"), n.span))
+      .map((n) => Syntax(TermTree.Variable(s"infix${n.text}"), n.span))
 
   /** Parses a lambda or a parenthesized term. */
   private def lambdaOrParenthesized(using Context): Result[Syntax[TermTree]] =
-    take(Token.leftParenthesis, "'('").and { (start) =>
+    take(Token.leftParenthesis, "'('").and { (opener) =>
       // If the next token is a closing parenthesis, we parse a unit literal. Otherwise, we may be
       // parsing either a lambda or simply a parenthesized term, depending on the presence of a
       // thick arrow after the closing parenthesis.
       takeIf(Token.hasTag(Token.rightParenthesis)) match
         case Some(s) =>
           // We've pased a closing parenthesis right after the opening one.
-          s.map((end) => Syntax(TermTree.UnitLiteral, start.span.extendedToCover(end.span)))
+          s.map((end) => Syntax(TermTree.UnitLiteral, opener.span.extendedToCover(end.span)))
+
         case _ =>
           // If the next token is an identifier followed by a colon, we'll parse it as a parameter
           // and parse the rest of a lambda. Otherwise we'll expect to parse an arbitrary term
@@ -108,21 +135,46 @@ object Parser:
           term.and { (parameterOrTerm) =>
             (parameterOrTerm, takeIf(Token.hasTag(Token.colon))) match
               case (Syntax(n: TermTree.Variable, s), Some(c)) =>
-                // `parameterOrTerm` is actually a parameter declaration.
+                // `parameterOrTerm` is actually a parameter declaration. We have to parse its
+                // ascription, which may be followed by multiple parameters.
                 typ3(using c.state)
+                  .and((t) => trailingTermParameters(List((Syntax(n, s), t))))
                   .andDiscard(take(Token.rightParenthesis, "')'"))
                   .andDiscard(take(Token.thickArrow, "'=>'"))
-                  .and((a) => term.map { (b) =>
-                    Syntax(TermTree.TermAbstraction(Syntax(n, s), a, b), s.extendedToCover(b.span))
+                  .and((ps) => term.map { (body) =>
+                    ps.foldLeft(body) { (b, p) =>
+                      val (x, t) = p
+                      Syntax(TermTree.TermAbstraction(x, t, b), x.span.extendedToCover(b.span))
+                    }
                   })
+
               case _ =>
                 // `parameterOrTerm` is just a term; parse the closing parenthesis.
                 take(Token.rightParenthesis, "')'").map((_) => parameterOrTerm)
           }
     }
 
+  /** The name of a parameter and its ascription. */
+  private type Parameter = (Syntax[TermTree.Variable], Syntax[TypeTree])
+
+  /** Parses a (possibly empty) list of parameters, each prefixed by a leading comma. */
+  private def trailingTermParameters(
+      ps: List[Parameter]
+  )(using Context): Result[List[Parameter]] =
+    takeIf(Token.hasTag(Token.comma)) match
+      case Some(separator) =>
+        termIdentifier(using separator.state)
+          .andDiscard(take(Token.colon, "':'"))
+          .andCombine(typ3)
+          .and(p => trailingTermParameters(p :: ps))
+      case _ => result(ps)
+
   /** Parses a type. */
   private def typ3(using Context): Result[Syntax[TypeTree]] =
+    simpleType
+
+  /** Parses a simple type. */
+  private def simpleType(using Context): Result[Syntax[TypeTree]] =
     peek.map((t) => t.tag) match
       case Some(Token.identifier) => typeIdentifier
       case _ => throw expected("type")
@@ -131,10 +183,6 @@ object Parser:
   private def typeIdentifier(using Context): Result[Syntax[TypeTree.Variable]] =
     take(Token.identifier, "identifier")
       .map((n) => Syntax(TypeTree.Variable(n.text.toString), n.span))
-
-  /** Parses a simple type. */
-  private def simpleType(using Context): Result[Syntax[TypeTree]] =
-    ???
 
   /** Returns the next token in `source`, if any. */
   private def peek(using Context): Option[Token] =
