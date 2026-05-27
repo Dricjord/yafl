@@ -48,6 +48,26 @@ object Optimizer:
         Some(Syntax(TermTree.IntegerLiteral(n), tree.span))
       case _ => None
 
+  private def normalize(tree: Syntax[TermTree], types: TypedProgram.TypeAssignments): Option[(Syntax[TermTree], TypedProgram.TypeAssignments)] = 
+    import TermTree.Binding as B // let x = 2
+    import TermTree.TermApplication as F  // 2
+    val originalType = types(tree)
+
+    tree match
+      case F(f, Syntax(B(name, initializer, body), _)) =>
+        val newTermApplication = Syntax(F(f, body), tree.span)
+        val newTree = Syntax(B(name, initializer, newTermApplication), tree.span)
+        val allTree = types.updated(newTermApplication, originalType).updated(newTree, originalType)
+        Some((newTree, allTree))
+
+      case F(Syntax(B(name, initializer, body), _), arguments) =>
+        val newTermApplication = Syntax(F(body, arguments), tree.span)
+        val newTree = Syntax(B(name, initializer, newTermApplication), tree.span)
+        val allTree = types.updated(newTermApplication, originalType).updated(newTree, originalType)
+        Some((newTree, allTree))
+
+      
+
 end Optimizer
 
 /** A pattern for recognizing integer constants. */
