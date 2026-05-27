@@ -82,11 +82,51 @@ object Parser:
 
   /** Parses a simple term of the application of a prefix operator. */
   private def prefixTerm(using Context): Result[Syntax[TermTree]] =
-    typeApplication
+    peek.map((t) => t.tag) match
+      case Some(Token.operator) =>
+        prefixOperator.and { op =>
+          prefixTerm.map { rhs =>
+            Syntax(
+              TermTree.TermApplication(op, rhs),
+              op.span.extendedToCover(rhs.span)
+            )
+          }
+        }
+      case _ => typeApplication
 
-  /** Parses a simple term or a type application. */
+  /** Parses a simple term or a type application.
+    *
+    * After parsing a simple term, consumes any trailing `[T]` sequences left-associatively:
+    * `e [A] [B]` becomes `TypeApplication(TypeApplication(e, A), B)`.
+    * Multiple arguments in one bracket pair are desugared the same way via `trailingTypeArguments`.
+    *
+    * Since `[` is not a delimiter the loop must run here, before control returns to
+    * `termApplication`, otherwise the outer loop would misinterpret the `[` as the start
+    * of a new juxtaposition argument.
+    */
   private def typeApplication(using Context): Result[Syntax[TermTree]] =
-    simpleTerm
+    def loop(lhs: Syntax[TermTree])(using Context): Result[Syntax[TermTree]] =
+      peek.map((t) => t.tag) match
+        case Some(Token.leftBracket) =>
+          take(Token.leftBracket, "'['").and { _ =>
+            typ3.and { firstArg =>
+              trailingTypeArguments(List(firstArg)).and { args =>
+                take(Token.rightBracket, "']'").and { end =>
+                  val combined = args.foldRight(lhs) { (arg, acc) =>
+                    Syntax(
+                      TermTree.TypeApplication(acc, arg),
+                      acc.span.extendedToCover(end.span)
+                    )
+                  }
+                  loop(combined)
+                }
+              }
+            }
+          }
+        case _ =>
+          result(lhs)
+
+    simpleTerm.and(loop)
 
   /** Parses a simple term. */
   private def simpleTerm(using Context): Result[Syntax[TermTree]] =
@@ -95,6 +135,10 @@ object Parser:
       case Some(Token.integer) => integerLiteral
       case Some(Token.identifier) => termIdentifier
       case Some(Token.leftParenthesis) => lambdaOrParenthesized
+      case Some(Token.`if`) => conditional
+      case Some(Token.let) => binding
+      case Some(Token.leftBracket) => typeAbstraction
+      case Some(Token.fix) => recursiveAbstraction
       case _ => throw expected("term")
 
   /** Parses a Boolean literal. */
@@ -116,6 +160,11 @@ object Parser:
   private def infixOperator(using Context): Result[Syntax[TermTree.Variable]] =
     take(Token.operator, "operator")
       .map((n) => Syntax(TermTree.Variable(s"infix${n.text}"), n.span))
+
+  /** Parses a prefix operator */
+  private def prefixOperator(using Context): Result[Syntax[TermTree.Variable]] =
+    take(Token.operator, "operator")
+      .map((n) => Syntax(TermTree.Variable(s"prefix${n.text}"), n.span))
 
   /** Parses a lambda or a parenthesized term. */
   private def lambdaOrParenthesized(using Context): Result[Syntax[TermTree]] =
@@ -154,6 +203,81 @@ object Parser:
           }
     }
 
+  /** Parses a conditional term. */
+  private def conditional(using Context): Result[Syntax[TermTree.Conditional]] =
+    take(Token.`if`, "'if'").and { (ifToken) =>
+      term.and { (condition) => 
+        take(Token.`then`, "'then'").and { (thenToken) =>
+          term.and { (success) =>
+            take(Token.`else`, "'else'").and { (elseToken) =>
+              term.map { (failure) =>
+                val conditionalTemp = ifToken.span.extendedToCover(failure.span)
+                Syntax(TermTree.Conditional(condition, success, failure), conditionalTemp)
+              }
+            }
+          }
+        }
+      }        
+    }
+
+  /** Parses a binding ('let' identifier '=' term ';' term) */
+  private def binding(using Context): Result[Syntax[TermTree.Binding]] =
+    take(Token.let, "'let'").and { start =>
+      termIdentifier.andDiscard(take(Token.equal, "'='")).and { name =>
+        term.andDiscard(take(Token.semicolon, "';'")).and { initializer =>
+          term.map { body =>
+            Syntax(
+              TermTree.Binding(name, initializer, body),
+              start.span.extendedToCover(body.span)
+            )
+          }
+        }
+      }
+    }
+
+  /** Parses a type abstraction of the form `[A] => e` or `[A, B, ...] => e`.
+    *
+    * Multiple type parameters are desugared into nested single-parameter abstractions:
+    * `[A, B] => e` becomes `TypeAbstraction(A, TypeAbstraction(B, e))`.
+    */
+  private def typeAbstraction(using Context): Result[Syntax[TermTree.TypeAbstraction]] =
+    take(Token.leftBracket, "'['").and { start =>
+      typeIdentifier.and { firstParam =>
+        trailingTypeParameters(List(firstParam))
+          .andDiscard(take(Token.rightBracket, "']'"))
+          .andDiscard(take(Token.thickArrow, "'=>'"))
+          .and { ps =>
+            term.map { body =>
+              val desugared = ps.foldLeft(body) { (b, p) =>
+                Syntax(TermTree.TypeAbstraction(p, b), p.span.extendedToCover(b.span))
+              }
+              Syntax(
+                desugared.value.asInstanceOf[TermTree.TypeAbstraction],
+                start.span.extendedToCover(body.span)
+              )
+            }
+          }
+      }
+    }
+
+  /** Parses a recursive abstraction of the form `fix x : T = e`.
+    *
+    * The name `x` is in scope inside `e`, allowing recursive definitions.
+    */
+  private def recursiveAbstraction(using Context): Result[Syntax[TermTree.RecursiveAbstraction]] =
+    take(Token.fix, "'fix'").and { start =>
+      termIdentifier.andDiscard(take(Token.colon, "':'")).and { name =>
+        typ3.andDiscard(take(Token.equal, "'='")).and { ascription =>
+          term.map { definition =>
+            Syntax(
+              TermTree.RecursiveAbstraction(name, ascription, definition),
+              start.span.extendedToCover(definition.span)
+            )
+          }
+        }
+      }
+    }
+
   /** The name of a parameter and its ascription. */
   private type Parameter = (Syntax[TermTree.Variable], Syntax[TypeTree])
 
@@ -169,20 +293,100 @@ object Parser:
           .and(p => trailingTermParameters(p :: ps))
       case _ => result(ps)
 
+  /** Parses a (possibly empty) list of type parameters, each prefixed by a leading comma.
+    *
+    * Accumulated in reverse so that `foldLeft` in the caller produces
+    * the correct left-to-right nesting (`[A, B] => e` → `[A] => [B] => e`).
+    */
+  private def trailingTypeParameters(
+      ps: List[Syntax[TypeTree.Variable]]
+  )(using Context): Result[List[Syntax[TypeTree.Variable]]] =
+    takeIf(Token.hasTag(Token.comma)) match
+      case Some(separator) =>
+        typeIdentifier(using separator.state)
+          .and(p => trailingTypeParameters(p :: ps))
+      case _ => result(ps)
+
+  /** Parses a (possibly empty) list of type arguments, each prefixed by a comma.
+    *
+    * Accumulated in reverse; the caller uses `foldRight` to restore left-to-right order
+    * when building `TypeApplication` nodes.
+    */
+  private def trailingTypeArguments(
+      as: List[Syntax[TypeTree]]
+  )(using Context): Result[List[Syntax[TypeTree]]] =
+    takeIf(Token.hasTag(Token.comma)) match
+      case Some(separator) =>
+        typ3(using separator.state)
+          .and(a => trailingTypeArguments(a :: as))
+      case _ => result(as)
+
   /** Parses a type. */
   private def typ3(using Context): Result[Syntax[TypeTree]] =
-    simpleType
+    simpleType.and { domain =>
+      peek.map((t) => t.tag) match
+        case Some(Token.thinArrow) =>
+          take(Token.thinArrow, "'->'").and { arrow =>
+            typ3.map { codomain =>
+              Syntax(
+                TypeTree.Arrow(domain, codomain),
+                domain.span.extendedToCover(codomain.span)
+              )
+            }
+          }
+        case _ => result(domain)
+    }
 
   /** Parses a simple type. */
   private def simpleType(using Context): Result[Syntax[TypeTree]] =
     peek.map((t) => t.tag) match
       case Some(Token.identifier) => typeIdentifier
+      case Some(Token.leftBracket) => universalType
+      case Some(Token.leftParenthesis) => parenthesizedType
       case _ => throw expected("type")
 
   /** Parses a type identifier. */
   private def typeIdentifier(using Context): Result[Syntax[TypeTree.Variable]] =
     take(Token.identifier, "identifier")
       .map((n) => Syntax(TypeTree.Variable(n.text.toString), n.span))
+
+  /** Parses a universal type of the form `[A] => T` or `[A, B, ...] => T`.
+    *
+    * Multiple type variables are desugared into nested universals:
+    * `[A, B] => T` becomes `ForAll(A, ForAll(B, T))`.
+    */
+  private def universalType(using Context): Result[Syntax[TypeTree.ForAll]] =
+    take(Token.leftBracket, "'['").and { start =>
+      typeIdentifier.and { firstParam =>
+        trailingTypeParameters(List(firstParam))
+          .andDiscard(take(Token.rightBracket, "']'"))
+          .andDiscard(take(Token.thickArrow, "'=>'"))
+          .and { ps =>
+            typ3.map { body =>
+              val desugared = ps.foldLeft(body) { (b, p) =>
+                Syntax(TypeTree.ForAll(p, b), p.span.extendedToCover(b.span))
+              }
+              Syntax(
+                desugared.value.asInstanceOf[TypeTree.ForAll],
+                start.span.extendedToCover(body.span)
+              )
+            }
+          }
+      }
+    }
+
+  /** Parses a parenthesized type */
+  private def parenthesizedType(using Context): Result[Syntax[TypeTree]] =
+    take(Token.leftParenthesis, "'('").and { start =>
+      typ3.and { body =>
+        take(Token.rightParenthesis, "')'").map { end =>
+          Syntax(
+            body.value,
+            start.span.extendedToCover(end.span)
+          )
+        }
+      }
+    }
 
   /** Returns the next token in `source`, if any. */
   private def peek(using Context): Option[Token] =

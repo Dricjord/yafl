@@ -99,14 +99,14 @@ All tasks have an associated test that you can use to exercise your implementati
 > Since other methods are private, there is no direct means to test the parsing of a type expression.
 > One simple way to work around this issue is to parse a term involving a type expression, such as a type application or a type abstraction.
 
-- [ ] **Conditionals and Bindings** (required)
+- [X] **Conditionals and Bindings** (required)
 
   Conditionals and bindings are simple terms that are relatively easy to parse.
   Each construction is introduced with its own dedicated keyword (i.e., `if` and `let`, respectively) and has a fixed structure.
   Consequently, it is straightforward for the parser to recognize the start of a construction.
   You can take inspiration from the part of the parser that is handling the expression of a lambda to write your code.
 
-- [ ] **Type abstractions** (required)
+- [X] **Type abstractions** (required)
 
   Type abstractions have the form `[T] => e`.
   Similarly to conditionals and bindings, they also start with a token (i.e., `[`) that cannot occur at the beginning of any other construction.
@@ -114,42 +114,41 @@ All tasks have an associated test that you can use to exercise your implementati
 
   Although the grammar specifies that more than one type parameter may be supplied, you can implement this step assuming that all type abstractions have exactly one parameter.
 
-- [ ] **Prefix terms** (required)
+- [X] **Prefix terms** (required)
 
   Prefix terms have the form `f e`, where `f` is an operator, meaning that the occurrence of an operator at the start of a term signals the presence of a prefix term.
   In other words, the parser can apply a similar strategy as the one used for simple terms, with two caveats.
   First, *any* operator can be recognized at the start rather than one specific token.
   Second, a prefix term is not considered a simple term because it cannot occur at the right-hand side of a term application, lest the expression `x + y` would become ambiguous.
 
-- [ ] **Universal types** (required)
+- [X] **Universal types** (required)
 
   Universal types (aka *forall*) have almost the same form as type abstractions but can only occur in type positions.
   In other words, the occurrence of an opening left brace can be interpreted as either a type abstraction or a universal type depending on the production rule being applied.
 
   Like for type abstractions, although the grammar specifies that a universal type may be introduced with more than one type variable, you can implement this step assuming that there is exactly one.
 
-- [ ] **Arrow types** (required)
-
+- [X] **Arrow types** (required)
   Arrow types have the form `T -> U`.
   Consequently, unlike the constructions mentioned above, the parser cannot simply use a single token to recognize the start of an arrow.
   However, notice that the occurrence of an arrow operator (i.e., `->`) following a type expression signals the presence of an arrow.
   Further, since the operator is right-associative, the parser can simply recurse to recognize the type expression on the right-hand side.
 
-- [ ] **Parenthesized types** (required)
+- [X] **Parenthesized types** (required)
 
   Just like term expressions, type expressions can be written in parentheses to override default precedence or simply to improve legibility.
   For example, the type expression `T -> U -> V` does not denote the same type as `(T -> U) -> V`.
   One describes functions from `T` to `U -> V`, the other describes functions from `T -> U` to `V`.
   Fortunately, since no other type construction involves parentheses, the occurrence of an opening parenthesis at the start of a type expression signals the presence of a parenthesized type.
 
-- [ ] **Type applications** (required)
+- [X] **Type applications** (required)
 
   Type applications have the form `e [T]`.
   Similarly to arrow types, the occurrence of a left bracket following a term signals the presence of a type application.
 
   Although the grammar specifies that more than one type argument may be supplied, you can implement this step assuming that all type applications have exactly one argument.
 
-- [ ] **Recursive abstractions** (required)
+- [X] **Recursive abstractions** (required)
 
   Recursive type abstractions have the form `fix x : T = f` where `x` is an identifier, `T` a type, and `f` an arbitrary term.
   Since the construction starts with a dedicated token, it can be recognized in the same way as other simple terms like bindings and conditionals.
@@ -158,7 +157,7 @@ All tasks have an associated test that you can use to exercise your implementati
   In other words, these tests will fail unless your parser can properly recognize a term expression of the form `T -> U`.
   You can still write your own tests using simpler types, though.
 
-- [ ] **Multiple parameters and arguments** (optional)
+- [X] **Multiple parameters and arguments** (optional)
 
   According to the grammar, several production rules can recognize comma-separated sequences of certain constructions.
   For example, a term abstraction can be written with more than one parameter (e.g., `(x : Int, y: Int) => x + y`).
