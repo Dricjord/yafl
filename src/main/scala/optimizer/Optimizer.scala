@@ -53,7 +53,7 @@ object Optimizer:
     import TermTree.TermApplication as F  // 2
     val originalType = types(tree)
 
-    tree match
+    tree.value match
       case F(f, Syntax(B(name, initializer, body), _)) =>
         val newTermApplication = Syntax(F(f, body), tree.span)
         val newTree = Syntax(B(name, initializer, newTermApplication), tree.span)
@@ -66,6 +66,26 @@ object Optimizer:
         val allTree = types.updated(newTermApplication, originalType).updated(newTree, originalType)
         Some((newTree, allTree))
 
+      case F(partialOuter @ Syntax(F(op @ InfixOperator(f1),Syntax(F(partialInner @ Syntax(F(InfixOperator(f2), IntegerConstant(c1)), _), x), _)), _),
+        IntegerConstant(c2)) if f1 == InfixOperator.Add && f2 == InfixOperator.Add && IntegerConstant.unapply(x).isEmpty =>
+        val combined   = Syntax(TermTree.IntegerLiteral(c1 + c2), tree.span)
+        val newPartial = Syntax(F(op, combined), partialOuter.span)
+        val newTree    = Syntax(F(newPartial, x), tree.span)
+        Some((newTree, types
+          .updated(combined,   Type.Ground.Int)
+          .updated(newPartial, types(partialOuter))
+          .updated(newTree,    originalType)))
+
+  
+      case F(partial @ Syntax(F(op @ InfixOperator(f), x), _), const @ IntegerConstant(_))
+          if f == InfixOperator.Add && IntegerConstant.unapply(x).isEmpty =>
+          val newPartial = Syntax(F(op, const), partial.span)
+          val newTree    = Syntax(F(newPartial, x), tree.span)
+          Some((newTree, types
+            .updated(newPartial, types(partial))
+            .updated(newTree,    originalType)))
+      
+      case _ => None
       
 
 end Optimizer
