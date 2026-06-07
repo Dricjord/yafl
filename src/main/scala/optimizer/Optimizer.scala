@@ -49,10 +49,23 @@ object Optimizer:
     import TermTree.TermApplication as F
     tree.value match
       case F(Syntax(F(InfixOperator(f), IntegerConstant(lhs)), _), IntegerConstant(rhs)) =>
-        val n = f match
-          case InfixOperator.Add => lhs + rhs
-          case InfixOperator.Sub => lhs - rhs
-        Some(Syntax(TermTree.IntegerLiteral(n), tree.span))
+        f match
+          case InfixOperator.Add => Some(Syntax(TermTree.IntegerLiteral(lhs + rhs), tree.span))
+          case InfixOperator.Sub => Some(Syntax(TermTree.IntegerLiteral(lhs - rhs), tree.span))
+          case InfixOperator.Mul => Some(Syntax(TermTree.IntegerLiteral(lhs * rhs), tree.span))
+          case InfixOperator.Div => Some(Syntax(TermTree.IntegerLiteral(lhs / rhs), tree.span))
+          case InfixOperator.Eq  => Some(Syntax(TermTree.BooleanLiteral(lhs == rhs), tree.span))
+          case InfixOperator.Neq => Some(Syntax(TermTree.BooleanLiteral(lhs != rhs), tree.span))
+          case InfixOperator.Lt  => Some(Syntax(TermTree.BooleanLiteral(lhs < rhs), tree.span))
+          case InfixOperator.Lte => Some(Syntax(TermTree.BooleanLiteral(lhs <= rhs), tree.span))
+          case InfixOperator.Gt  => Some(Syntax(TermTree.BooleanLiteral(lhs > rhs), tree.span))
+          case InfixOperator.Gte => Some(Syntax(TermTree.BooleanLiteral(lhs >= rhs), tree.span))
+          case _ => None
+      case F(Syntax(F(InfixOperator(f), Syntax(TermTree.BooleanLiteral(lhs), _)), _), Syntax(TermTree.BooleanLiteral(rhs), _)) =>
+        f match
+          case InfixOperator.And => Some(Syntax(TermTree.BooleanLiteral(lhs && rhs), tree.span))
+          case InfixOperator.Or  => Some(Syntax(TermTree.BooleanLiteral(lhs || rhs), tree.span))
+          case _ => None
       case _ => None
 
   private def normalizeRecursively(
