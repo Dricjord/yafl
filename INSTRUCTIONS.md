@@ -5,9 +5,9 @@ More specifically, you should modify and/or extend the current implementation so
 
 Yafl's compiler comprises four main stages: parser, typer, optimizer, emitter.
 The typing stage has been fully implemented; your work will focus on the three others.
-Most tasks related to the parser are considered *required* and must be done to complete your project.
-Other tasks are considered *optional* and can be skipped if necessary.
-Some optional tasks are also marked *hard* or *brutal* and are significantly more difficult to complete than others.
+Most tasks related to the parser are considered _required_ and must be done to complete your project.
+Other tasks are considered _optional_ and can be skipped if necessary.
+Some optional tasks are also marked _hard_ or _brutal_ and are significantly more difficult to complete than others.
 
 A primary objective of this project is to train your ability to work within a purely functional paradigm.
 Hence, you are not allowed to use variables or mutable data structures to complete your tasks.
@@ -42,10 +42,10 @@ Nonetheless, there are a few rules that can help:
 
 1. **Document all definitions!**
 
-   All classes and all functions *must* be documented.
+   All classes and all functions _must_ be documented.
    Exceptions are vanishingly rare.
 
-   Your comment should *add* information that is not simply already in the name of your definition.
+   Your comment should _add_ information that is not simply already in the name of your definition.
    For example, the following is a performative comment that does not make the code clearer:
 
    ```
@@ -83,7 +83,7 @@ You may use LLM‑powered tools (e.g., Claude, Copilot, etc.) to assist you with
 
 1. you fully understand and take complete responsibility for any code or text that you include in your submission; and
 2. you clearly disclose the use of any assistant wherever appropriate (e.g., as comments next to generated source
-code or as footnotes after generated documentation).
+   code or as footnotes after generated documentation).
 
 ## Parsing Tasks
 
@@ -99,14 +99,14 @@ All tasks have an associated test that you can use to exercise your implementati
 > Since other methods are private, there is no direct means to test the parsing of a type expression.
 > One simple way to work around this issue is to parse a term involving a type expression, such as a type application or a type abstraction.
 
-- [X] **Conditionals and Bindings** (required)
+- [x] **Conditionals and Bindings** (required)
 
   Conditionals and bindings are simple terms that are relatively easy to parse.
   Each construction is introduced with its own dedicated keyword (i.e., `if` and `let`, respectively) and has a fixed structure.
   Consequently, it is straightforward for the parser to recognize the start of a construction.
   You can take inspiration from the part of the parser that is handling the expression of a lambda to write your code.
 
-- [X] **Type abstractions** (required)
+- [x] **Type abstractions** (required)
 
   Type abstractions have the form `[T] => e`.
   Similarly to conditionals and bindings, they also start with a token (i.e., `[`) that cannot occur at the beginning of any other construction.
@@ -114,41 +114,41 @@ All tasks have an associated test that you can use to exercise your implementati
 
   Although the grammar specifies that more than one type parameter may be supplied, you can implement this step assuming that all type abstractions have exactly one parameter.
 
-- [X] **Prefix terms** (required)
+- [x] **Prefix terms** (required)
 
   Prefix terms have the form `f e`, where `f` is an operator, meaning that the occurrence of an operator at the start of a term signals the presence of a prefix term.
   In other words, the parser can apply a similar strategy as the one used for simple terms, with two caveats.
-  First, *any* operator can be recognized at the start rather than one specific token.
+  First, _any_ operator can be recognized at the start rather than one specific token.
   Second, a prefix term is not considered a simple term because it cannot occur at the right-hand side of a term application, lest the expression `x + y` would become ambiguous.
 
-- [X] **Universal types** (required)
+- [x] **Universal types** (required)
 
-  Universal types (aka *forall*) have almost the same form as type abstractions but can only occur in type positions.
+  Universal types (aka _forall_) have almost the same form as type abstractions but can only occur in type positions.
   In other words, the occurrence of an opening left brace can be interpreted as either a type abstraction or a universal type depending on the production rule being applied.
 
   Like for type abstractions, although the grammar specifies that a universal type may be introduced with more than one type variable, you can implement this step assuming that there is exactly one.
 
-- [X] **Arrow types** (required)
-  Arrow types have the form `T -> U`.
-  Consequently, unlike the constructions mentioned above, the parser cannot simply use a single token to recognize the start of an arrow.
-  However, notice that the occurrence of an arrow operator (i.e., `->`) following a type expression signals the presence of an arrow.
-  Further, since the operator is right-associative, the parser can simply recurse to recognize the type expression on the right-hand side.
+- [x] **Arrow types** (required)
+      Arrow types have the form `T -> U`.
+      Consequently, unlike the constructions mentioned above, the parser cannot simply use a single token to recognize the start of an arrow.
+      However, notice that the occurrence of an arrow operator (i.e., `->`) following a type expression signals the presence of an arrow.
+      Further, since the operator is right-associative, the parser can simply recurse to recognize the type expression on the right-hand side.
 
-- [X] **Parenthesized types** (required)
+- [x] **Parenthesized types** (required)
 
   Just like term expressions, type expressions can be written in parentheses to override default precedence or simply to improve legibility.
   For example, the type expression `T -> U -> V` does not denote the same type as `(T -> U) -> V`.
   One describes functions from `T` to `U -> V`, the other describes functions from `T -> U` to `V`.
   Fortunately, since no other type construction involves parentheses, the occurrence of an opening parenthesis at the start of a type expression signals the presence of a parenthesized type.
 
-- [X] **Type applications** (required)
+- [x] **Type applications** (required)
 
   Type applications have the form `e [T]`.
   Similarly to arrow types, the occurrence of a left bracket following a term signals the presence of a type application.
 
   Although the grammar specifies that more than one type argument may be supplied, you can implement this step assuming that all type applications have exactly one argument.
 
-- [X] **Recursive abstractions** (required)
+- [x] **Recursive abstractions** (required)
 
   Recursive type abstractions have the form `fix x : T = f` where `x` is an identifier, `T` a type, and `f` an arbitrary term.
   Since the construction starts with a dedicated token, it can be recognized in the same way as other simple terms like bindings and conditionals.
@@ -157,13 +157,13 @@ All tasks have an associated test that you can use to exercise your implementati
   In other words, these tests will fail unless your parser can properly recognize a term expression of the form `T -> U`.
   You can still write your own tests using simpler types, though.
 
-- [X] **Multiple parameters and arguments** (optional)
+- [x] **Multiple parameters and arguments** (optional)
 
   According to the grammar, several production rules can recognize comma-separated sequences of certain constructions.
   For example, a term abstraction can be written with more than one parameter (e.g., `(x : Int, y: Int) => x + y`).
 
   Looking at the definitions of abstract syntax trees, however, one may be surprised to see that term abstractions have exactly one parameter.
-  That is because a lambda taking more parameters can be *desugared* into its curried form during parsing.
+  That is because a lambda taking more parameters can be _desugared_ into its curried form during parsing.
   In other words, `(x : Int, y : Int) => x + y` can be parsed as though it had been written `(x : Int) => (y : Int) => x + y` instead.
 
   Likewise, type abstractions, type applications, and universal types can use a similar desugaring.
@@ -203,29 +203,27 @@ These can be implemented in any order, but note that normalization may help dram
 Most available tests may require the application of more than one optimization to pass.
 Further, all tests rely on the parser behaving correctly.
 
-- [ ] **Normalization** (optional)
+- [x] **Normalization** (optional)
 
   Equivalent programs can come in many shapes.
   For example, `1 + x + 2` computes the same value as `1 + 2 + x`.
   However, it is convenient for a compiler if equivalent terms have equivalent syntax.
-  While this property cannot be guaranteed in general, there are a few simple transformations one can apply to *normalize* the shape of a term.
+  While this property cannot be guaranteed in general, there are a few simple transformations one can apply to _normalize_ the shape of a term.
 
   For this task, your goal is to transform programs so that:
+  1. Constants are on the left-most side of syntax trees.
 
-    1. Constants are on the left-most side of syntax trees.
+     For example, the normal form of `1 + x + 2` is `1 + 2 + x`.
+     In the rewritten form, `x` is on the right leaf of the tree, whereas `2` is on the left one.
 
-       For example, the normal form of `1 + x + 2` is `1 + 2 + x`.
-       In the rewritten form, `x` is on the right leaf of the tree, whereas `2` is on the left one.
+  2. Bindings are moved as close as possible to the root.
 
-    2. Bindings are moved as close as possible to the root.
-
-       For example, the normal form of `2 + (let x = 1 ; x)` is `let x = 1 ; 2 + x`.
-       In the rewritten form, `x` has moved closer to the root.
+     For example, the normal form of `2 + (let x = 1 ; x)` is `let x = 1 ; 2 + x`.
+     In the rewritten form, `x` has moved closer to the root.
 
   Naturally, your normalization should not modify the semantics of the program.
   In particular, a binding cannot be moved above the binding introducing the variables occurring free in its initializer.
   For example, `(z : Int) => let x = z : x + x` is already in normal form because moving the binding outside of the term abstraction would leave `z` unbound.
-
 
 - [ ] **Dead code elimination** (optional)
 
@@ -282,7 +280,7 @@ These can be implemented in any order, although it is recommended to start with 
 Note that all available tests rely on the parser behaving correctly.
 Most tests can only pass if you have also implemented part of the optimizer or if your compiler can handle closures.
 
-- [ ] **Built-in arithmetic and comparison** (optional)
+- [x] **Built-in arithmetic and comparison** (optional)
 
   The current implementation can only handle two built-in operations, namely addition and subtraction.
   For this task, your goal is to support the rest.
@@ -367,7 +365,6 @@ Most tests can only pass if you have also implemented part of the optimizer or i
   ```
 
   Implementing this strategy involves three main steps.
-
   1. Detect what values are part of the function's closure.
   2. Store the these values on the heap.
   3. Create a function that accepts the closure as an extra parameter.
@@ -381,7 +378,6 @@ Follow these instructions to submit your work:
 
 1. Create a tag of your repository.
 2. Write a small report with a link to this tag and, for each task you have completed:
-
    - the names of the persons who worked on the task
    - references to the relevant part of your implementation
 
