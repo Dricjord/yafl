@@ -44,7 +44,7 @@ object Optimizer:
           (tree, Map(tree -> types(tree)))
   }
 
-  /** Returns a literal denoting the result of `tree` iff it represents a constant expression. */
+  /** Returns a literal denoting the result of tree if it represents a constant expression. */
   private def constantFold(tree: Syntax[TermTree]): Option[Syntax[TermTree]] =
     import TermTree.TermApplication as F
     tree.value match

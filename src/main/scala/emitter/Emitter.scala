@@ -8,13 +8,36 @@ object Emitter:
 
   /** The context in which code generation is taking place.
     *
-    * @param types A map from a term to its type.
-    * @param functions The functions that have been compiled so far.
+    * @param types A map from each term to its type.
+    * @param locals The WAT local variables declared so far, as (name, type) pairs. Appended in
+    *   declaration order so that no reversal is needed when emitting them.
+    * @param nextId A monotonically increasing counter used to produce unique WAT local names.
     */
-  case class Context(types: Map[Syntax[TermTree], Type])
+  case class Context(
+    types: Map[Syntax[TermTree], Type],
+    locals: List[(String, String)] = Nil,
+    nextId: Int = 0
+  )
 
   /** The result of generating the code of an expression. */
   type Result[+T] = yafl.Result[T, Context]
+
+  /** Returns the WAT value type */
+  private def watTypeOf(tpe: Type, site: Syntax[?]): String =
+    tpe match
+      case Type.Ground.Bool | Type.Ground.Int => "i32"
+      case u => throw Diagnostic(s"unsupported type '${u}'", site.span)
+
+  /** Declares a fresh WAT local variable of `wasmType` for a Yafl binding named `name`, returning
+    * its unique WAT name. The counter is advanced and the declaration is appended to the context so
+    * that the emitter encounters them in source order.
+    */
+  private def declareLocal(name: String, wasmType: String)(using Context): Result[String] =
+    val watName = s"${name}_${context.nextId}"
+    yafl.Result(watName)(using context.copy(
+      locals = context.locals :+ (watName, wasmType),
+      nextId = context.nextId + 1
+    ))
 
   /** Returns code of `program`. */
   def emit(program: TypedProgram): String =
@@ -42,20 +65,19 @@ object Emitter:
 
   /** Returns the code of the main function. */
   private def emitMain(body: Syntax[TermTree])(using Context): Result[Rope] = {
-    val output = context.types(body) match
-      case Type.Ground.Bool | Type.Ground.Int =>
-        "i32"
-      case u =>
-        throw Diagnostic(s"root term should have 'Int', found '${u}'", body.span)
+    val output = watTypeOf(context.types(body), body)
 
-    emitAsValue(body).map { (code) =>
-      Rope(s"(func (export \"main\") (result ${output})") ++ code ++ ")"
+    emitAsValue(body, Map.empty).and { code =>
+      // context.locals is already in declaration order (appended, not prepended).
+      val decls = context.locals.map { case (n, t) => s"(local $$$n $t)" }.mkString(" ")
+      val prefix = if decls.isEmpty then "" else s"$decls "
+      result(Rope(s"(func (export \"main\") (result ${output}) ${prefix}") ++ code ++ ")")
     }
   }
 
   /** Returns the code computing the value expressed by `tree`, which occurs as an argument or a
-    * return value. */
-  private def emitAsValue(tree: Syntax[TermTree])(using Context): Result[Rope] = {
+    * return value.  */
+  private def emitAsValue(tree: Syntax[TermTree], env: Map[String, String])(using Context): Result[Rope] = {
     tree.value match
       case TermTree.Variable(n) =>
         // Built-in symbols require special handling. Specifically, `#argc` must be emitted as a
@@ -64,7 +86,7 @@ object Emitter:
         n match
           case "#argc" => result(Rope(s"(call $$#argc)"))
           case "#argv" => ???
-          case _ => result(Rope(s"(local.get $$${n})"))
+          case _ => result(Rope(s"(local.get $$${env.getOrElse(n, n)})"))
 
       case TermTree.IntegerLiteral(n) =>
         result(Rope(s"(i32.const ${n})"))
@@ -72,9 +94,21 @@ object Emitter:
       case TermTree.BooleanLiteral(n) =>
         result(Rope(s"(i32.const ${if n then 1 else 0})"))
 
+      case TermTree.Binding(nameNode, initializer, body) =>
+        val name = nameNode.value.name
+        val wasmType = watTypeOf(context.types(initializer), initializer)
+
+        declareLocal(name, wasmType).and { watName =>
+          emitAsValue(initializer, env).and { initCode =>
+            emitAsValue(body, env + (name -> watName)).map { bodyCode =>
+              initCode ++ s"(local.set $$$watName) " ++ bodyCode
+            }
+          }
+        }
+
       case TermTree.TermApplication(callee, a) => callee.value match
         case TermTree.TermApplication(InfixOperator(f), b) =>
-          emitAsValue(b).and((lhs) => emitAsValue(a).map { (rhs) =>
+          emitAsValue(b, env).and { lhs => emitAsValue(a, env).map { rhs =>
             val operation = f match
               case InfixOperator.Add => "(i32.add)"
               case InfixOperator.Sub => "(i32.sub)"
@@ -89,10 +123,10 @@ object Emitter:
               case InfixOperator.And => "(i32.and)"
               case InfixOperator.Or  => "(i32.or)"
             lhs ++ rhs ++ operation
-          })
+          }}
 
         case _ =>
-          emitAsCallee(callee).and((f) => emitAsValue(a).map((x) => x ++ f))
+          emitAsCallee(callee, env).and { f => emitAsValue(a, env).map { x => x ++ f } }
 
       case _ =>
         throw Diagnostic("unsupported term", tree.span)
@@ -104,7 +138,7 @@ object Emitter:
     * The result has the form `(call f)` where `f` is a local function or `(call_indirect t i)`
     * where `t` is a type and `i` is the index in the function table.
     */
-  private def emitAsCallee(tree: Syntax[TermTree])(using Context): Result[Rope] = {
+  private def emitAsCallee(tree: Syntax[TermTree], env: Map[String, String])(using Context): Result[Rope] = {
     tree.value match
       case TermTree.Variable("#argv") =>
         result(Rope(s"(call $$#argv)"))

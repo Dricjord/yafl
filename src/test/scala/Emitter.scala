@@ -30,6 +30,22 @@ final class EmitterTests extends munit.FunSuite:
     val main = compile(input).`export`("main")
     assertEquals(main.apply()(0), 42L)
 
+  test("binding"):
+    // Uses a runtime value so the optimizer cannot fold the binding away.
+    val input = SourceFile("test", "let x = #argv 0 ; x + x")
+    val wasm = compile(input)
+    val main = wasm.`export`("main")
+    writeArguments(wasm, IArray(21))
+    assertEquals(main.apply()(0), 42L)
+
+  test("binding shadowing"):
+    // Two bindings share the name `x`; they must get different WAT local names.
+    val input = SourceFile("test", "let x = #argv 0 ; let x = x + 1 ; x")
+    val wasm = compile(input)
+    val main = wasm.`export`("main")
+    writeArguments(wasm, IArray(41))
+    assertEquals(main.apply()(0), 42L)
+
   /** Compiles `input` to a WebAssembly module and returns an instance of it. */
   private def compile(input: SourceFile): chicory.runtime.Instance =
     val program =  Optimizer.optimize(Typer.check(Parser.parse(input)))
