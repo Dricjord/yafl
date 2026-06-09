@@ -12,7 +12,7 @@ Repository link https://github.com/Dricjord/yafl
 
 ## Conditionals and Bindings
 
-_Persons_: **Filipe**, **Luan**
+_Persons_: **Filipe**, **Luan**, **Anthony**
 
 _Implementation_ :
 Le support des conditionnelles (`if/then/else`) et des liaisons locales (`let x = e ; body`) a été complété à travers les composants suivants :
@@ -70,23 +70,35 @@ Le support des types entre parenthèses a été complété à travers les compos
 
 ## Type applications
 
-_Persons_:
+_Persons_: **Anthony**
 
-_Implementation_ :
+_Implementation_ : 
+Construit un noeud TypeApplication(e, T) dans l'AST lorsqu'un terme est suivi d'un type entre crochets `e [T]`. Complété grâce aux fonctions suivantes : 
+
+- **[Parser.scala (typeApplication)](https://github.com/Dricjord/yafl/blob/main/src/main/scala/parser/Parser.scala#L97-L129)**
+- **[Parser.scala (trailingTypeArguments)](https://github.com/Dricjord/yafl/blob/main/src/main/scala/parser/Parser.scala#L310-L338)**
 
 ## Recursive abstractions
 
-_Persons_:
+_Persons_: **Anthony**
 
 _Implementation_ :
+Définit un terme autoréférentiel `fix x : T = f` où `x` est accessible dans `f`. Implémenté grâce à la fonction suivante: 
+
+- **[Parser.scala (recursiveAbstraction)](https://github.com/Dricjord/yafl/blob/main/src/main/scala/parser/Parser.scala#L263-L279)**
 
 # Optional Taks
 
 ## Multiple parameters and arguments
 
-_Persons_:
+_Persons_: **Anthony**
 
 _Implementation_ :
+Désucre les paramètres multiples en abstractions imbriquées et les arguments de type multiples en applications chaînées.
+
+- **[Parser.scala (trailingTermParameters)](https://github.com/Dricjord/yafl/blob/main/src/main/scala/parser/Parser.scala#L284-L294)**
+- **[Parser.scala (trailingTypeParameters)](https://github.com/Dricjord/yafl/blob/main/src/main/scala/parser/Parser.scala#L296-L308)**
+- **[Parser.scala (trailingTypeArguments)](https://github.com/Dricjord/yafl/blob/main/src/main/scala/parser/Parser.scala#L310-L338)**
 
 ## Normalization
 
