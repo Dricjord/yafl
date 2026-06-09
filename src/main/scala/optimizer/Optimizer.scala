@@ -288,6 +288,7 @@ object Optimizer:
 
       case _ =>
         tree
+        
   /** Applique la propagation de constantes de manière récursive sur tout l'arbre syntaxique. */
   private def propagateConstantsRecursively(
       tree: Syntax[TermTree], types: TypedProgram.TypeAssignments
