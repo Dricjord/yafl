@@ -7,10 +7,25 @@ object Optimizer:
 
   /** Returns `program` optimized. */
   def optimize(program: TypedProgram): TypedProgram =
-    val (folded, foldedTypes) = constantFoldRecursively(program.syntax, program.types)
-    val (normalized, normalizedTypes) = normalizeRecursively(folded, foldedTypes)
-    val (dce, dceTypes) = eliminateDeadCodeRecursively(normalized, normalizedTypes)
-    TypedProgram(dce, dceTypes)
+    // Fonction interne récursive pour boucler jusqu'à ce que l'arbre se stabilise (Point Fixe)
+    def loop(currentSyntax: Syntax[TermTree], currentTypes: TypedProgram.TypeAssignments): (Syntax[TermTree], TypedProgram.TypeAssignments) =
+      // 1. Constant folding
+      val (folded, foldedTypes) = constantFoldRecursively(currentSyntax, currentTypes)
+      // 2. Normalization
+      val (normalized, normalizedTypes) = normalizeRecursively(folded, foldedTypes)
+      // 3. Constant Propagation (Nouvelle passe)
+      val (propagated, propagatedTypes) = propagateConstantsRecursively(normalized, normalizedTypes)
+      // 4. Dead Code Elimination
+      val (dce, dceTypes) = eliminateDeadCodeRecursively(propagated, propagatedTypes)
+
+      // Si l'AST a changé au cours de ce cycle, on refait un tour d'optimisation
+      if dce.value != currentSyntax.value then
+        loop(dce, dceTypes)
+      else
+        (dce, dceTypes)
+
+    val (finalSyntax, finalTypes) = loop(program.syntax, program.types)
+    TypedProgram(finalSyntax, finalTypes)
 
   /** Substitutes constant expressions in `tree` with their results, returning a an updated syntax
     * tree along with a map from each term to its type.
@@ -237,6 +252,109 @@ object Optimizer:
       if bindingName.value.name == name then false else containsVariable(definition, name)
     case _ =>
       false
+
+  
+  /** Remplace récursivement toutes les occurrences libres de la variable `name` par l'expression `replacement`. */
+  private def substitute(tree: Syntax[TermTree], name: String, replacement: Syntax[TermTree]): Syntax[TermTree] =
+    tree.value match
+      case TermTree.Variable(n) =>
+        if n == name then replacement else tree
+
+      case TermTree.TermAbstraction(param, ascription, body) =>
+        // Si le paramètre de la fonction masque notre variable, on ne descend pas plus bas
+        if param.value.name == name then tree
+        else Syntax(TermTree.TermAbstraction(param, ascription, substitute(body, name, replacement)), tree.span)
+
+      case TermTree.TermApplication(abstraction, argument) =>
+        Syntax(TermTree.TermApplication(substitute(abstraction, name, replacement), substitute(argument, name, replacement)), tree.span)
+
+      case TermTree.TypeAbstraction(parameter, body) =>
+        Syntax(TermTree.TypeAbstraction(parameter, substitute(body, name, replacement)), tree.span)
+
+      case TermTree.TypeApplication(abstraction, argument) =>
+        Syntax(TermTree.TypeApplication(substitute(abstraction, name, replacement), argument), tree.span)
+
+      case TermTree.Conditional(condition, success, failure) =>
+        Syntax(TermTree.Conditional(substitute(condition, name, replacement), substitute(success, name, replacement), substitute(failure, name, replacement)), tree.span)
+
+      case TermTree.Binding(bindingName, initializer, body) =>
+        val nextInit = substitute(initializer, name, replacement)
+        val nextBody = if bindingName.value.name == name then body else substitute(body, name, replacement)
+        Syntax(TermTree.Binding(bindingName, nextInit, nextBody), tree.span)
+
+      case TermTree.RecursiveAbstraction(bindingName, ascription, definition) =>
+        val nextDef = if bindingName.value.name == name then definition else substitute(definition, name, replacement)
+        Syntax(TermTree.RecursiveAbstraction(bindingName, ascription, nextDef), tree.span)
+
+      case _ =>
+        tree
+  /** Applique la propagation de constantes de manière récursive sur tout l'arbre syntaxique. */
+  private def propagateConstantsRecursively(
+      tree: Syntax[TermTree], types: TypedProgram.TypeAssignments
+  ): (Syntax[TermTree], TypedProgram.TypeAssignments) =
+    val (cleanedTree, cleanedTypes) = tree.value match
+      case e: TermTree.Binding =>
+        // On optimise d'abord l'initialiseur et le corps
+        val (init, ts) = propagateConstantsRecursively(e.initializer, types)
+        val (body, us) = propagateConstantsRecursively(e.body, types)
+        
+        init.value match
+          // Si l'initialiseur est une constante prouvée (Int ou Bool), on la propage dans le corps !
+          case TermTree.IntegerLiteral(_) | TermTree.BooleanLiteral(_) =>
+            val substitutedBody = substitute(body, e.name.value.name, init)
+            // On recrée temporairement le binding avec le corps substitué
+            val rebuilt = Syntax(TermTree.Binding(e.name, init, substitutedBody), tree.span)
+            (rebuilt, (types ++ ts ++ us).updated(rebuilt, types.getOrElse(tree, Type.Ground.Int)))
+          case _ =>
+            val rebuilt = Syntax(TermTree.Binding(e.name, init, body), tree.span)
+            (rebuilt, (types ++ ts ++ us).updated(rebuilt, types.getOrElse(tree, Type.Ground.Int)))
+
+      case e: TermTree.Conditional =>
+        val (c, ts) = propagateConstantsRecursively(e.condition, types)
+        val (s, us) = propagateConstantsRecursively(e.success, types)
+        val (f, vs) = propagateConstantsRecursively(e.failure, types)
+        val rebuilt = Syntax(TermTree.Conditional(c, s, f), tree.span)
+        (rebuilt, (types ++ ts ++ us ++ vs).updated(rebuilt, types.getOrElse(tree, Type.Ground.Int)))
+
+      case e: TermTree.TermApplication =>
+        val (abs, ts) = propagateConstantsRecursively(e.abstraction, types)
+        val (arg, us) = propagateConstantsRecursively(e.argument, types)
+        val rebuilt = Syntax(TermTree.TermApplication(abs, arg), tree.span)
+        (rebuilt, (types ++ ts ++ us).updated(rebuilt, types.getOrElse(tree, Type.Ground.Int)))
+
+      case e: TermTree.TermAbstraction =>
+        val (body, ts) = propagateConstantsRecursively(e.body, types)
+        val rebuilt = Syntax(TermTree.TermAbstraction(e.parameter, e.ascription, body), tree.span)
+        (rebuilt, (types ++ ts).updated(rebuilt, types.getOrElse(tree, Type.Ground.Int)))
+
+      case e: TermTree.TypeAbstraction =>
+        val (body, ts) = propagateConstantsRecursively(e.body, types)
+        val rebuilt = Syntax(TermTree.TypeAbstraction(e.parameter, body), tree.span)
+        (rebuilt, (types ++ ts).updated(rebuilt, types.getOrElse(tree, Type.Ground.Int)))
+
+      case e: TermTree.TypeApplication =>
+        val (abs, ts) = propagateConstantsRecursively(e.abstraction, types)
+        val rebuilt = Syntax(TermTree.TypeApplication(abs, e.argument), tree.span)
+        (rebuilt, (types ++ ts).updated(rebuilt, types.getOrElse(tree, Type.Ground.Int)))
+
+      case e: TermTree.RecursiveAbstraction =>
+        val (definition, ts) = propagateConstantsRecursively(e.definition, types)
+        val rebuilt = Syntax(TermTree.RecursiveAbstraction(e.name, e.ascription, definition), tree.span)
+        (rebuilt, (types ++ ts).updated(rebuilt, types.getOrElse(tree, Type.Ground.Int)))
+
+      case _ =>
+        (tree, types.updated(tree, types.getOrElse(tree, Type.Ground.Int)))
+
+    // Une passe optionnelle pour mettre à jour la table des types des expressions substituées
+    // (Puisque les nœuds substitués prennent le type de la constante propagée)
+    val finalTypes = cleanedTree.value match
+      case TermTree.Binding(_, init, body) =>
+        val initType = cleanedTypes.getOrElse(init, Type.Ground.Int)
+        // On s'assure que la map des types contienne une entrée valide pour le corps restructuré
+        cleanedTypes.updated(body, cleanedTypes.getOrElse(body, initType))
+      case _ => cleanedTypes
+
+    (cleanedTree, finalTypes)
 end Optimizer
 
 /** A pattern for recognizing integer constants. */
