@@ -23,21 +23,26 @@ Repository link https://github.com/Dricjord/yafl
 
 ## Universal types
 
-*Persons*: 
+*Persons*:
 
-*Implementation* :
+*Implementation* : 
+
 
 ## Arrow types
 
-*Persons*: 
+*Persons*: **Luan**
 
-*Implementation* :
+*Implementation* : 
+Le support des types flèches (`T -> U`), qui représentent le type des fonctions ou abstractions de termes, a été complété à travers les composants suivants :
+* **[Parser.scala (typ3)](https://github.com/Dricjord/yafl/blob/main/src/main/scala/parser/Parser.scala#L325-L338)** 
 
 ## Parenthesized types
 
-*Persons*: 
+*Persons*: **Luan**
 
-*Implementation* :
+*Implementation* : 
+Le support des types entre parenthèses a été complété à travers les composants suivants :
+* **[Parser.scala (parenthesizedType)](https://github.com/Dricjord/yafl/blob/main/src/main/scala/parser/Parser.scala#L379-L389)**
 
 ## Type applications
 
@@ -76,7 +81,7 @@ L'élimination du code mort a été implémentée de manière purement fonctionn
 * **[Optimizer.scala (containsVariable)](https://github.com/Dricjord/yafl/blob/main/src/main/scala/optimizer/Optimizer.scala#L236-L254)**
 
 Les tests unitaires validant le comportement se trouvent dans :
-* **[OptimizerTests.scala](https://github.com/Dricjord/yafl/blob/main/src/test/scala/Optimizer.scala##L25-L42)** 
+* **[OptimizerTests.scala](https://github.com/Dricjord/yafl/blob/main/src/test/scala/Optimizer.scala#L25-L42)** 
 
 L'implémentation ainsi que les tests ont grandement été aidés par l'IA Gemini
 
