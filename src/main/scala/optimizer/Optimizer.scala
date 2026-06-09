@@ -84,6 +84,10 @@ object Optimizer:
           case _ => None
       case _ => None
 
+  /** Applies `normalize` recursively until the tree reaches a fixed point.
+    * Code written by Filipe Da Silva, Claude was used to understand the recursive
+    * structure and as a guide when stuck during implementation.
+    */
   private def normalizeRecursively(
       tree: Syntax[TermTree], types: TypedProgram.TypeAssignments
   ): (Syntax[TermTree], TypedProgram.TypeAssignments) =
