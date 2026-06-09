@@ -2,6 +2,8 @@
 
 Repository link https://github.com/Dricjord/yafl
 
+Tag link : https://github.com/Dricjord/yafl/releases/tag/v1.0
+
 # Persons
 
 - Luan Cortes Zuka (Luan-CortesZ)
@@ -72,8 +74,8 @@ Le support des types entre parenthèses a été complété à travers les compos
 
 _Persons_: **Anthony**
 
-_Implementation_ : 
-Construit un noeud TypeApplication(e, T) dans l'AST lorsqu'un terme est suivi d'un type entre crochets `e [T]`. Complété grâce aux fonctions suivantes : 
+_Implementation_ :
+Construit un noeud TypeApplication(e, T) dans l'AST lorsqu'un terme est suivi d'un type entre crochets `e [T]`. Complété grâce aux fonctions suivantes :
 
 - **[Parser.scala (typeApplication)](https://github.com/Dricjord/yafl/blob/main/src/main/scala/parser/Parser.scala#L97-L129)**
 - **[Parser.scala (trailingTypeArguments)](https://github.com/Dricjord/yafl/blob/main/src/main/scala/parser/Parser.scala#L310-L338)**
@@ -83,7 +85,7 @@ Construit un noeud TypeApplication(e, T) dans l'AST lorsqu'un terme est suivi d'
 _Persons_: **Anthony**
 
 _Implementation_ :
-Définit un terme autoréférentiel `fix x : T = f` où `x` est accessible dans `f`. Implémenté grâce à la fonction suivante: 
+Définit un terme autoréférentiel `fix x : T = f` où `x` est accessible dans `f`. Implémenté grâce à la fonction suivante:
 
 - **[Parser.scala (recursiveAbstraction)](https://github.com/Dricjord/yafl/blob/main/src/main/scala/parser/Parser.scala#L263-L279)**
 
