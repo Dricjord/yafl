@@ -9,7 +9,8 @@ object Optimizer:
   def optimize(program: TypedProgram): TypedProgram =
     val (folded, foldedTypes) = constantFoldRecursively(program.syntax, program.types)
     val (normalized, normalizedTypes) = normalizeRecursively(folded, foldedTypes)
-    TypedProgram(normalized, normalizedTypes)
+    val (dce, dceTypes) = eliminateDeadCodeRecursively(normalized, normalizedTypes)
+    TypedProgram(dce, dceTypes)
 
   /** Substitutes constant expressions in `tree` with their results, returning a an updated syntax
     * tree along with a map from each term to its type.
@@ -133,8 +134,109 @@ object Optimizer:
           .updated(swappedTree, originalType)))
 
       case _ => None
-      
+  
+  /** Applique l'élimination du code mort de manière récursive sur tout l'arbre syntaxique. */
+  private def eliminateDeadCodeRecursively(tree: Syntax[TermTree], types: TypedProgram.TypeAssignments): (Syntax[TermTree], TypedProgram.TypeAssignments) =
+    // On nettoie d'abord les enfants récursivement pour obtenir leurs arbres et leurs types à jour
+    val (cleanedTree, cleanedTypes) = tree.value match
+      case e: TermTree.Conditional =>
+        val (c, ts) = eliminateDeadCodeRecursively(e.condition, types)
+        val (s, us) = eliminateDeadCodeRecursively(e.success, types)
+        val (f, vs) = eliminateDeadCodeRecursively(e.failure, types)
+        val rebuilt = Syntax(TermTree.Conditional(c, s, f), tree.span)
+        val currentType = types.getOrElse(tree, types.getOrElse(s, types.getOrElse(f, Type.Ground.Int)))
+        (rebuilt, (types ++ ts ++ us ++ vs).updated(rebuilt, currentType))
 
+      case e: TermTree.Binding =>
+        val (init, ts) = eliminateDeadCodeRecursively(e.initializer, types)
+        val (body, us) = eliminateDeadCodeRecursively(e.body, types)
+        val rebuilt = Syntax(TermTree.Binding(e.name, init, body), tree.span)
+        (rebuilt, (types ++ ts ++ us).updated(rebuilt, types.getOrElse(tree, Type.Ground.Int)))
+
+      case e: TermTree.TermApplication =>
+        val (abs, ts) = eliminateDeadCodeRecursively(e.abstraction, types)
+        val (arg, us) = eliminateDeadCodeRecursively(e.argument, types)
+        val rebuilt = Syntax(TermTree.TermApplication(abs, arg), tree.span)
+        (rebuilt, (types ++ ts ++ us).updated(rebuilt, types.getOrElse(tree, Type.Ground.Int)))
+
+      case e: TermTree.TermAbstraction =>
+        val (body, ts) = eliminateDeadCodeRecursively(e.body, types)
+        val rebuilt = Syntax(TermTree.TermAbstraction(e.parameter, e.ascription, body), tree.span)
+        (rebuilt, (types ++ ts).updated(rebuilt, types.getOrElse(tree, Type.Ground.Int)))
+
+      case e: TermTree.TypeAbstraction =>
+        val (body, ts) = eliminateDeadCodeRecursively(e.body, types)
+        val rebuilt = Syntax(TermTree.TypeAbstraction(e.parameter, body), tree.span)
+        (rebuilt, (types ++ ts).updated(rebuilt, types.getOrElse(tree, Type.Ground.Int)))
+
+      case e: TermTree.TypeApplication =>
+        val (abs, ts) = eliminateDeadCodeRecursively(e.abstraction, types)
+        val rebuilt = Syntax(TermTree.TypeApplication(abs, e.argument), tree.span)
+        (rebuilt, (types ++ ts).updated(rebuilt, types.getOrElse(tree, Type.Ground.Int)))
+
+      case e: TermTree.RecursiveAbstraction =>
+        val (definition, ts) = eliminateDeadCodeRecursively(e.definition, types)
+        val rebuilt = Syntax(TermTree.RecursiveAbstraction(e.name, e.ascription, definition), tree.span)
+        (rebuilt, (types ++ ts).updated(rebuilt, types.getOrElse(tree, Type.Ground.Int)))
+
+      case TermTree.BooleanLiteral(_) =>
+        (tree, types.updated(tree, Type.Ground.Bool))
+
+      case TermTree.IntegerLiteral(_) =>
+        (tree, types.updated(tree, Type.Ground.Int))
+
+      case _ =>
+        val calculatedType = types.getOrElse(tree, Type.Ground.Int)
+        (tree, types.updated(tree, calculatedType))
+
+    // Une fois les enfants nettoyés, on applique la règle d'élimination locale au sommet
+    eliminateDeadCode(cleanedTree, cleanedTypes) match
+      case Some((simplifiedTree, simplifiedTypes)) =>
+        // Si le nœud a été simplifié (ex: Conditional -> success), on réapplique l'optimisation sur ce résultat
+        eliminateDeadCodeRecursively(simplifiedTree, simplifiedTypes)
+      case None =>
+        (cleanedTree, cleanedTypes)
+
+  /** Élimine un nœud conditionnel constant ou une liaison non utilisée au sommet de l'arbre. */
+  private def eliminateDeadCode(tree: Syntax[TermTree], types: TypedProgram.TypeAssignments): Option[(Syntax[TermTree], TypedProgram.TypeAssignments)] =
+    tree.value match
+      // Conditionnel dont la condition est 'true' -> on extrait la branche 'then'
+      case TermTree.Conditional(Syntax(TermTree.BooleanLiteral(true), _), success, _) =>
+        val t = types.getOrElse(success, Type.Ground.Int)
+        Some((success, types.updated(success, t)))
+
+      // Conditionnel dont la condition est 'false' -> on extrait la branche 'else'
+      case TermTree.Conditional(Syntax(TermTree.BooleanLiteral(false), _), _, failure) =>
+        val t = types.getOrElse(failure, Type.Ground.Int)
+        Some((failure, types.updated(failure, t)))
+
+      // Liaison locale 'let' où la variable n'apparaît jamais dans le corps
+      case TermTree.Binding(nameNode, _, body) if !containsVariable(body, nameNode.value.name) =>
+        val t = types.getOrElse(body, Type.Ground.Int)
+        Some((body, types.updated(body, t)))
+
+      case _ => None
+
+  /** Analyse de manière purement fonctionnelle si une variable est mentionnée librement dans un arbre. */
+  private def containsVariable(tree: Syntax[TermTree], name: String): Boolean = tree.value match
+    case TermTree.Variable(n) =>
+      n == name
+    case TermTree.TermAbstraction(param, _, body) =>
+      if param.value.name == name then false else containsVariable(body, name)
+    case TermTree.TermApplication(abstraction, argument) =>
+      containsVariable(abstraction, name) || containsVariable(argument, name)
+    case TermTree.TypeAbstraction(_, body) =>
+      containsVariable(body, name)
+    case TermTree.TypeApplication(abstraction, _) =>
+      containsVariable(abstraction, name)
+    case TermTree.Conditional(condition, success, failure) =>
+      containsVariable(condition, name) || containsVariable(success, name) || containsVariable(failure, name)
+    case TermTree.Binding(bindingName, initializer, body) =>
+      containsVariable(initializer, name) || (if bindingName.value.name == name then false else containsVariable(body, name))
+    case TermTree.RecursiveAbstraction(bindingName, _, definition) =>
+      if bindingName.value.name == name then false else containsVariable(definition, name)
+    case _ =>
+      false
 end Optimizer
 
 /** A pattern for recognizing integer constants. */
